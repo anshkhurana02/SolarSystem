@@ -2,7 +2,7 @@ import * as THREE from "https://cdn.skypack.dev/three@0.129.0";
 import { OrbitControls } from "https://cdn.skypack.dev/three@0.129.0/examples/jsm/controls/OrbitControls.js";
 import { GUI } from "https://cdn.skypack.dev/dat.gui";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyDbu715Pb04cLqKz9QKEg9bS5jWsKRRfpU",
@@ -15,7 +15,7 @@ const firebaseConfig = {
   };
 
 const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+const db = getFirestore(app);
 
 let scene, camera, renderer, controls, gui;
 let planets = {};
@@ -124,6 +124,39 @@ function setupGUI() {
     });
 }
 
+async function saveToFirebase() {
+    try {
+        await setDoc(doc(db, "solarSystem", "config"), {
+            orbitRadii,
+            revolutionSpeeds,
+            planetSizes
+        });
+        alert("✅ Data saved to Firebase successfully!");
+    } catch (error) {
+        console.error("Error saving data:", error);
+        alert("❌ Error saving data. Check the console for details.");
+    }
+}
+
+async function loadFromFirebase() {
+    try {
+        const docSnap = await getDoc(doc(db, "solarSystem", "config"));
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            Object.assign(orbitRadii, data.orbitRadii);
+            Object.assign(revolutionSpeeds, data.revolutionSpeeds);
+            Object.assign(planetSizes, data.planetSizes);
+            updateGUIControls();
+            alert("✅ Data loaded successfully!");
+        } else {
+            alert("⚠️ No data found in Firebase.");
+        }
+    } catch (error) {
+        console.error("Error loading data:", error);
+        alert("❌ Error loading data. Check the console for details.");
+    }
+}
+
 function updateGUIControls() {
     Object.keys(revolutionSpeeds).forEach(planet => {
         gui.__folders["Revolution Speeds"].__controllers
@@ -139,31 +172,8 @@ function updateGUIControls() {
             .setValue(planetSizes[planet]);
     });
 
-    // Also update planet sizes dynamically
     Object.keys(planetSizes).forEach(planet => {
         planets[planet].geometry = new THREE.SphereGeometry(planetSizes[planet], 100, 100);
-    });
-}
-
-function saveToFirebase() {
-    set(ref(db, "solarSystem"), {
-        orbitRadii,
-        revolutionSpeeds,
-        planetSizes
-    });
-}
-
-function loadFromFirebase() {
-    get(ref(db, "solarSystem")).then(snapshot => {
-        if (snapshot.exists()) {
-            const data = snapshot.val();
-            Object.assign(orbitRadii, data.orbitRadii);
-            Object.assign(revolutionSpeeds, data.revolutionSpeeds);
-            Object.assign(planetSizes, data.planetSizes);
-
-            // Update GUI controls after loading
-            updateGUIControls();
-        }
     });
 }
 
@@ -181,13 +191,13 @@ function setupFirebaseButtons() {
     saveButton.onclick = saveToFirebase;
     saveButton.style.padding = "10px";
     saveButton.style.cursor = "pointer";
-    
+
     const loadButton = document.createElement("button");
     loadButton.textContent = "Load from Firebase";
     loadButton.onclick = loadFromFirebase;
     loadButton.style.padding = "10px";
     loadButton.style.cursor = "pointer";
-    
+
     buttonContainer.appendChild(saveButton);
     buttonContainer.appendChild(loadButton);
     document.body.appendChild(buttonContainer);
