@@ -1,133 +1,196 @@
-
 import * as THREE from "https://cdn.skypack.dev/three@0.129.0";
 import { OrbitControls } from "https://cdn.skypack.dev/three@0.129.0/examples/jsm/controls/OrbitControls.js";
+import { GUI } from "https://cdn.skypack.dev/dat.gui";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
-let scene, camera, renderer, controls, skybox;
-let planet_sun, planet_mercury, planet_venus, planet_earth, planet_mars, planet_jupiter, planet_saturn, planet_uranus, planet_neptune;
+const firebaseConfig = {
+    apiKey: "AIzaSyDbu715Pb04cLqKz9QKEg9bS5jWsKRRfpU",
+    authDomain: "solarsystem-a9d24.firebaseapp.com",
+    projectId: "solarsystem-a9d24",
+    storageBucket: "solarsystem-a9d24.firebasestorage.app",
+    messagingSenderId: "383716181804",
+    appId: "1:383716181804:web:89e0bf2643857acf148e89",
+    measurementId: "G-JX15KTF55Z"
+  };
 
-// Define orbit radii
-let mercury_orbit_radius = 50;
-let venus_orbit_radius = 60;
-let earth_orbit_radius = 70;
-let mars_orbit_radius = 80;
-let jupiter_orbit_radius = 100;
-let saturn_orbit_radius = 120;
-let uranus_orbit_radius = 140;
-let neptune_orbit_radius = 160;
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-// Define revolution speeds
-let mercury_revolution_speed = 4;
-let venus_revolution_speed = 3;
-let earth_revolution_speed = 2;
-let mars_revolution_speed = 1.8;
-let jupiter_revolution_speed = 1.2;
-let saturn_revolution_speed = 1;
-let uranus_revolution_speed = 0.7;
-let neptune_revolution_speed = 0.5;
+let scene, camera, renderer, controls, gui;
+let planets = {};
+let orbitRadii = {
+    mercury: 50,
+    venus: 60,
+    earth: 70,
+    mars: 80,
+    jupiter: 100,
+    saturn: 120,
+    uranus: 140,
+    neptune: 160
+};
+let revolutionSpeeds = {
+    mercury: 4,
+    venus: 3,
+    earth: 2,
+    mars: 1.8,
+    jupiter: 1.2,
+    saturn: 1,
+    uranus: 0.7,
+    neptune: 0.5
+};
+let planetSizes = {
+    sun: 20,
+    mercury: 2,
+    venus: 3,
+    earth: 4,
+    mars: 3.5,
+    jupiter: 10,
+    saturn: 8,
+    uranus: 6,
+    neptune: 5
+};
 
-function createMatrixArray() {
-    const skyboxImagepaths = [
-        "../img/skybox/space_ft.png",
-        "../img/skybox/space_bk.png",
-        "../img/skybox/space_up.png",
-        "../img/skybox/space_dn.png",
-        "../img/skybox/space_rt.png",
-        "../img/skybox/space_lf.png"
-    ];
-    return skyboxImagepaths.map((image) => {
-        let texture = new THREE.TextureLoader().load(image);
-        return new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide });
-    });
-}
-
-function setSkyBox() {
-    const materialArray = createMatrixArray();
-    let skyboxGeo = new THREE.BoxGeometry(1000, 1000, 1000);
-    skybox = new THREE.Mesh(skyboxGeo, materialArray);
-    scene.add(skybox);
-}
-
-function loadPlanetTexture(texture, radius, widthSegments, heightSegments) {
-    const geometry = new THREE.SphereGeometry(radius, widthSegments, heightSegments);
+function loadPlanetTexture(texture, radius) {
+    const geometry = new THREE.SphereGeometry(radius, 100, 100);
     const planetTexture = new THREE.TextureLoader().load(texture);
     const material = new THREE.MeshBasicMaterial({ map: planetTexture });
-
     return new THREE.Mesh(geometry, material);
 }
 
 function init() {
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 15000);
-
-    setSkyBox();
-
-    planet_sun = loadPlanetTexture("../img/sun_hd.jpg", 20, 100, 100);
-    planet_earth = loadPlanetTexture("../img/earth_hd.jpg", 4, 100, 100);
-    planet_mercury = loadPlanetTexture("../img/mercury_hd.jpg", 2, 100, 100);
-    planet_venus = loadPlanetTexture("../img/venus_hd.jpg", 3, 100, 100);
-    planet_mars = loadPlanetTexture("../img/mars_hd.jpg", 3.5, 100, 100);
-    planet_jupiter = loadPlanetTexture("../img/jupiter_hd.jpg", 10, 100, 100);
-    planet_saturn = loadPlanetTexture("../img/saturn_hd.jpg", 8, 100, 100);
-    planet_uranus = loadPlanetTexture("../img/uranus_hd.jpg", 6, 100, 100);
-    planet_neptune = loadPlanetTexture("../img/neptune_hd.jpg", 5, 100, 100);
-
-    scene.add(planet_sun, planet_earth, planet_mercury, planet_venus, planet_mars, planet_jupiter, planet_saturn, planet_uranus, planet_neptune);
-
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 15000);
+    renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    createOrbits();
+    planets.sun = loadPlanetTexture("../img/sun_hd.jpg", planetSizes.sun);
+    scene.add(planets.sun);
+    
+    Object.keys(orbitRadii).forEach(planet => {
+        planets[planet] = loadPlanetTexture(`../img/${planet}_hd.jpg`, planetSizes[planet]);
+        scene.add(planets[planet]);
+    });
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.minDistance = 12;
     controls.maxDistance = 600;
     camera.position.z = 100;
+
+    createOrbits();
+    setupGUI();
+    setupFirebaseButtons();
+}
+
+function createOrbits() {
+    Object.values(orbitRadii).forEach(radius => {
+        const geometry = new THREE.RingGeometry(radius - 0.1, radius, 100);
+        const material = new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide });
+        const ring = new THREE.Mesh(geometry, material);
+        ring.rotation.x = Math.PI / 2;
+        scene.add(ring);
+    });
 }
 
 function planetRevolver(time, speed, planet, orbitRadius) {
     let orbitSpeedMultiplier = 0.001;
     const planetAngle = time * orbitSpeedMultiplier * speed;
-    planet.position.x = planet_sun.position.x + orbitRadius * Math.cos(planetAngle);
-    planet.position.z = planet_sun.position.z + orbitRadius * Math.sin(planetAngle);
+    planets[planet].position.x = planets.sun.position.x + orbitRadius * Math.cos(planetAngle);
+    planets[planet].position.z = planets.sun.position.z + orbitRadius * Math.sin(planetAngle);
 }
-function createRing(innerRadius) {
-    let outerRadius = innerRadius - 0.1
-    let thetaSegments = 100
-    const geometry = new THREE.RingGeometry(innerRadius, outerRadius, thetaSegments);
-    const material = new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide });
-    const mesh = new THREE.Mesh(geometry, material);
-    scene.add(mesh)
-    mesh.rotation.x = Math.PI / 2
-    return mesh;
-  
-  }
-  function createOrbits() {
-    createRing(mercury_orbit_radius);
-    createRing(venus_orbit_radius);
-    createRing(earth_orbit_radius);
-    createRing(mars_orbit_radius);
-    createRing(jupiter_orbit_radius);
-    createRing(saturn_orbit_radius);
-    createRing(uranus_orbit_radius);
-    createRing(neptune_orbit_radius);
-}
-
 
 function animate(time) {
-    planet_sun.rotation.y += 0.005;
-
-    planetRevolver(time, mercury_revolution_speed, planet_mercury, mercury_orbit_radius);
-    planetRevolver(time, venus_revolution_speed, planet_venus, venus_orbit_radius);
-    planetRevolver(time, earth_revolution_speed, planet_earth, earth_orbit_radius);
-    planetRevolver(time, mars_revolution_speed, planet_mars, mars_orbit_radius);
-    planetRevolver(time, jupiter_revolution_speed, planet_jupiter, jupiter_orbit_radius);
-    planetRevolver(time, saturn_revolution_speed, planet_saturn, saturn_orbit_radius);
-    planetRevolver(time, uranus_revolution_speed, planet_uranus, uranus_orbit_radius);
-    planetRevolver(time, neptune_revolution_speed, planet_neptune, neptune_orbit_radius);
-
+    planets.sun.rotation.y += 0.005;
+    Object.keys(orbitRadii).forEach(planet => {
+        planetRevolver(time, revolutionSpeeds[planet], planet, orbitRadii[planet]);
+    });
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
+}
+
+function setupGUI() {
+    gui = new GUI();
+    const speedFolder = gui.addFolder("Revolution Speeds");
+    const orbitFolder = gui.addFolder("Orbit Radii");
+    const sizeFolder = gui.addFolder("Planet Sizes");
+
+    Object.keys(revolutionSpeeds).forEach(planet => {
+        speedFolder.add(revolutionSpeeds, planet, 0.1, 10, 0.1);
+        orbitFolder.add(orbitRadii, planet, 40, 200, 1);
+        sizeFolder.add(planetSizes, planet, 1, 15, 0.1).onChange(value => {
+            planets[planet].geometry = new THREE.SphereGeometry(value, 100, 100);
+        });
+    });
+}
+
+function updateGUIControls() {
+    Object.keys(revolutionSpeeds).forEach(planet => {
+        gui.__folders["Revolution Speeds"].__controllers
+            .find(controller => controller.property === planet)
+            .setValue(revolutionSpeeds[planet]);
+
+        gui.__folders["Orbit Radii"].__controllers
+            .find(controller => controller.property === planet)
+            .setValue(orbitRadii[planet]);
+
+        gui.__folders["Planet Sizes"].__controllers
+            .find(controller => controller.property === planet)
+            .setValue(planetSizes[planet]);
+    });
+
+    // Also update planet sizes dynamically
+    Object.keys(planetSizes).forEach(planet => {
+        planets[planet].geometry = new THREE.SphereGeometry(planetSizes[planet], 100, 100);
+    });
+}
+
+function saveToFirebase() {
+    set(ref(db, "solarSystem"), {
+        orbitRadii,
+        revolutionSpeeds,
+        planetSizes
+    });
+}
+
+function loadFromFirebase() {
+    get(ref(db, "solarSystem")).then(snapshot => {
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            Object.assign(orbitRadii, data.orbitRadii);
+            Object.assign(revolutionSpeeds, data.revolutionSpeeds);
+            Object.assign(planetSizes, data.planetSizes);
+
+            // Update GUI controls after loading
+            updateGUIControls();
+        }
+    });
+}
+
+function setupFirebaseButtons() {
+    const buttonContainer = document.createElement("div");
+    buttonContainer.style.position = "absolute";
+    buttonContainer.style.top = "20px";
+    buttonContainer.style.left = "20px";
+    buttonContainer.style.zIndex = "1000";
+    buttonContainer.style.display = "flex";
+    buttonContainer.style.gap = "10px";
+
+    const saveButton = document.createElement("button");
+    saveButton.textContent = "Save to Firebase";
+    saveButton.onclick = saveToFirebase;
+    saveButton.style.padding = "10px";
+    saveButton.style.cursor = "pointer";
+    
+    const loadButton = document.createElement("button");
+    loadButton.textContent = "Load from Firebase";
+    loadButton.onclick = loadFromFirebase;
+    loadButton.style.padding = "10px";
+    loadButton.style.cursor = "pointer";
+    
+    buttonContainer.appendChild(saveButton);
+    buttonContainer.appendChild(loadButton);
+    document.body.appendChild(buttonContainer);
 }
 
 init();
